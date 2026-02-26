@@ -17,15 +17,89 @@ All endpoints below are relative to this base.
 ## Quick Start
 
 ```bash
-curl -s -X POST "${BASE_URL}/api/analyze" \
+curl -s -X POST "${BASE_URL}/api/analyze/agent" \
   -H "Content-Type: application/json" \
   -d '{"api_key":"<KEY>","api_secret":"<SECRET>","analysis_depth":"basic"}' \
-  | jq '.report.overall_risk'
+  | jq '{score: .overall_score, level: .level, top_positions: [.top_positions[0:3]]}'
 ```
 
 ---
 
 ## Endpoints
+
+### 0. POST /api/analyze/agent — Agent Optimized (Recommended for Agents)
+
+**Designed for AI agents** — returns a concise, pre-structured response with top 10 positions only. Use this instead of `/api/analyze` for better parsing and presentation.
+
+**Request body**
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `api_key` | string | yes | — | Binance API key (read-only permissions) |
+| `api_secret` | string | yes | — | Binance API secret |
+| `analysis_depth` | `"basic"` \| `"detailed"` | no | `"basic"` | `basic` = rule-based; `detailed` = OpenAI-enhanced |
+
+**Response: `AgentAnalyzeResponse`**
+
+```json
+{
+  "report_id": "2026-02-26T03:27:04.502Z",
+  "overall_score": 65,
+  "level": "risky",
+  "total_assets_usd": 12345.67,
+  "position_count": 15,
+  "top_positions": [
+    {
+      "symbol": "SOL",
+      "side": "spot",
+      "value_usd": 4500.00,
+      "allocation_percent": 36.5,
+      "risk_score": 78,
+      "risk_level": "high",
+      "main_risk": "OI激增35%+超买"
+    }
+  ],
+  "recommendations": [
+    "建议减仓 SOL (风险分 78)",
+    "建议观望 ETH",
+    "建议持有 BNB, USDT"
+  ]
+}
+```
+
+**Response fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `overall_score` | number | 0–100 portfolio risk score |
+| `level` | string | `safe` / `cautious` / `risky` / `dangerous` |
+| `total_assets_usd` | number | Total portfolio value |
+| `position_count` | number | Total number of positions |
+| `top_positions` | array | Top 10 positions sorted by risk_score (desc) |
+| `top_positions[].symbol` | string | Asset symbol |
+| `top_positions[].side` | string | `spot` / `long` / `short` |
+| `top_positions[].value_usd` | number | Position value in USD |
+| `top_positions[].allocation_percent` | number | Portfolio allocation % |
+| `top_positions[].risk_score` | number | 0–100 risk score |
+| `top_positions[].risk_level` | string | `low` / `medium` / `high` / `critical` |
+| `top_positions[].main_risk` | string | One-line risk summary (e.g., "OI激增35%+超买") |
+| `recommendations` | array | Top 3 action items |
+
+**curl example**
+
+```bash
+curl -s -X POST "${BASE_URL}/api/analyze/agent" \
+  -H "Content-Type: application/json" \
+  -d '{"api_key":"<KEY>","api_secret":"<SECRET>","analysis_depth":"basic"}'
+```
+
+**Why use this endpoint:**
+- ✅ Returns only top 10 positions (sorted by risk) — no data overload
+- ✅ Pre-extracted `main_risk` field — easy to display to users
+- ✅ Only top 3 recommendations — concise action items
+- ✅ Perfect for agents to parse and present
+
+---
 
 ### 1. POST /api/analyze — Run Full Analysis
 
