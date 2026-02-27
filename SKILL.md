@@ -1,46 +1,55 @@
 ---
 name: agent-sse
-description: Use SSE endpoints for agent analysis to avoid 15s proxy timeouts; includes request format and client handling notes.
+description: Agent API guide for PositionPal to analyze portfolio risk via SSE streaming.
 ---
 
-# Agent SSE Usage
+# PositionPal Agent API (SSE)
 
-## When to use
+## What this skill is for
 
-Use SSE for agent analysis requests to avoid reverse proxy timeouts (e.g., Railway 15s limit). Prefer SSE whenever the analysis may call external exchanges/markets or take more than a few seconds.
+This skill documents **agent-only** API usage for PositionPal. It focuses on **SSE (Server‑Sent Events)** so agents can receive progress and results in a single streaming response.
 
-## Endpoints
+Use this skill when:
+- You are building or testing an agent client.
+- You need streaming progress updates.
+- You want the final report in one streamed response.
 
-- `POST /api/analyze/stream` (public, body includes `api_key` and `api_secret`)
-- `POST /api/agent/aggregate/analyze/stream` (agent, API key/secret in headers)
+## Base URL
 
-## Request format
+All endpoints in this skill use the production backend:
 
-### 1) Public analysis SSE
+`https://loyal-celebration-production-e4d8.up.railway.app`
 
-- URL: `POST /api/analyze/stream`
-- Headers: `Content-Type: application/json`
-- Body:
-  - `api_key`: string
-  - `api_secret`: string
-  - `analysis_depth`: `basic` | `detailed` (optional)
-  - `portfolio_only`: boolean (optional)
+## Agent-only endpoints (SSE)
 
-### 2) Agent aggregate SSE
+### 1) Aggregate analysis (SSE)
 
-- URL: `POST /api/agent/aggregate/analyze/stream`
+Analyze all connected exchange accounts for the authenticated user. Requires **agent API key + secret** in headers.
+
+- Method: `POST`
+- Path: `/api/agent/aggregate/analyze/stream`
 - Headers:
   - `Content-Type: application/json`
-  - `x-api-key`: string
-  - `x-api-secret`: string
-- Body:
-  - `accountIds`: string[] (optional)
-  - `analysis_depth`: `basic` | `detailed` (optional)
-  - `portfolio_only`: boolean (optional)
+  - `x-api-key`: `<AGENT_API_KEY>`
+  - `x-api-secret`: `<AGENT_API_SECRET>`
+- Body (JSON):
+  - `accountIds`: `string[]` (optional) — limit analysis to specific accounts
+  - `analysis_depth`: `"basic" | "detailed"` (optional)
+  - `portfolio_only`: `boolean` (optional) — skip macro market signals
 
-## SSE response shape
+#### Curl example
 
-The server streams JSON events using `text/event-stream`:
+```bash
+curl -N -X POST "https://loyal-celebration-production-e4d8.up.railway.app/api/agent/aggregate/analyze/stream" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <AGENT_API_KEY>" \
+  -H "x-api-secret: <AGENT_API_SECRET>" \
+  -d '{"analysis_depth":"basic","portfolio_only":true}'
+```
+
+## SSE response format
+
+The server returns `text/event-stream` and emits multiple `data:` lines. Each line is JSON:
 
 ```
 data: {"stage":"accounts","progress":5,"message":"Loaded 2 exchange accounts"}
@@ -48,7 +57,7 @@ data: {"stage":"fetch","progress":20,"message":"Fetching Binance (Main)"}
 data: {"stage":"pricing","progress":50,"message":"Pricing spot assets"}
 data: {"stage":"macro","progress":60,"message":"Fetching macro signals"}
 data: {"stage":"scoring","progress":70,"message":"Scoring positions"}
-data: {"stage":"done","progress":100,"report_id":"...","report":{...}}
+data: {"stage":"done","progress":100,"report":{...}}
 ```
 
 On error:
@@ -57,22 +66,72 @@ On error:
 data: {"stage":"error","error":"..."}
 ```
 
-## Example curl
+## Report data shape (PositionSafetyReport)
 
-SSE with curl (keep the connection open):
+When `stage: "done"` arrives, the payload includes `report` with this structure:
 
-```bash
-curl -N -X POST "https://<host>/api/agent/aggregate/analyze/stream" \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: <AGENT_KEY>" \
-  -H "x-api-secret: <AGENT_SECRET>" \
-  -d '{"analysis_depth":"basic","portfolio_only":true}'
+```json
+{
+  "generated_at": "2026-02-27T04:07:01.727Z",
+  "account_summary": {
+    "total_assets_usd": 12345.67,
+    "spot_value_usd": 8000.12,
+    "futures_value_usd": 4345.55,
+    "position_count": 12,
+    "top_holdings": [
+      { "symbol": "BTC", "value_usd": 5200.12, "allocation": 42.1 }
+    ]
+  },
+  "macro_analysis": {
+    "fear_greed_index": 62,
+    "fear_greed_label": "Greed",
+    "btc_trend": "bullish",
+    "funding_rate_status": "neutral",
+    "market_strength": 68
+  },
+  "positions": [
+    {
+      "symbol": "BTC",
+      "side": "spot",
+      "quantity": 0.12,
+      "value_usd": 5200.12,
+      "allocation_percent": 42.1,
+      "risk_score": 58,
+      "risk_level": "medium",
+      "indicators": {
+        "oi_change_24h": null,
+        "rsi_14": 63,
+        "volume_ratio": 1.4,
+        "funding_rate": 0.0001,
+        "volatility_ratio": 1.1
+      },
+      "analysis": "Aggregated spot holding across 2 exchange(s).",
+      "unrealized_pnl": 120.5
+    }
+  ],
+  "overall_risk": {
+    "overall_score": 57,
+    "level": "cautious",
+    "risk_factors": ["BTC score 58 (42.1%)"],
+    "summary": "Aggregated 2 account(s). Largest exchange: binance (Main). Overall score 57/100."
+  },
+  "recommendations": [
+    "Reduce concentration: BTC is 42.1% of portfolio.",
+    "Consider lowering leverage / reducing perp exposure."
+  ]
+}
 ```
 
-## Client handling notes
+Notes:
+- `macro_analysis` can be `null` if `portfolio_only` is `true`.
+- `positions` includes both spot and perpetual positions; `side` is `spot | long | short`.
+- `indicators` values may be `null` when data is unavailable.
 
-- Always use `-N` in curl to disable buffering.
-- Expect multiple `data:` frames; parse each line as JSON.
-- If the stream ends without `stage: "done"`, treat as failure and surface the last `stage` + `message`.
+## Client usage notes
+
+- Always use `-N` in curl (disables buffering).
+- Parse each `data:` line as a JSON event.
+- The final result is sent with `stage: "done"` and includes `report`.
+- If the stream ends before `done`, treat it as failure and surface the last event.
 *** End Patch}<> to=functions.apply_patch code
 ++ ...
