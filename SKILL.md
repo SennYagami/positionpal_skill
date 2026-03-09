@@ -14,11 +14,24 @@ Use this skill when:
 - You need streaming progress updates.
 - You want the final report in one streamed response.
 
+## Prerequisites: Get an API Key
+
+To use this skill, you need a PositionPal **Agent API key + secret**.
+
+1. Go to **[www.positionpal.xyz/settings](https://www.positionpal.xyz/settings)** and log in with your wallet.
+2. Navigate to **Settings → API Keys**.
+3. Click **Create Key**, give it a label, and save the `key` and `secret` — the secret is shown **only once**.
+4. Provide the key and secret to your agent when prompted (or store them in your agent's environment/config).
+
+> If you have not connected any exchange accounts yet, do that first at **Settings → Exchanges** — the skill analyzes whichever accounts you have linked.
+
+---
+
 ## Base URL
 
 All endpoints in this skill use the production backend:
 
-`https://loyal-celebration-production-e4d8.up.railway.app`
+`https://api.positionpal.xyz`
 
 ## Agent-only endpoints (SSE)
 
@@ -40,7 +53,7 @@ Analyze all connected exchange accounts for the authenticated user. Requires **a
 #### Curl example
 
 ```bash
-curl -N -X POST "https://loyal-celebration-production-e4d8.up.railway.app/api/agent/aggregate/analyze/stream" \
+curl -N -X POST "https://api.positionpal.xyz/api/agent/aggregate/analyze/stream" \
   -H "Content-Type: application/json" \
   -H "x-api-key: <AGENT_API_KEY>" \
   -H "x-api-secret: <AGENT_API_SECRET>" \
