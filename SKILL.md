@@ -57,8 +57,14 @@ data: {"stage":"fetch","progress":20,"message":"Fetching Binance (Main)"}
 data: {"stage":"pricing","progress":50,"message":"Pricing spot assets"}
 data: {"stage":"macro","progress":60,"message":"Fetching macro signals"}
 data: {"stage":"scoring","progress":70,"message":"Scoring positions"}
+data: {"stage":"finalizing","progress":90,"message":"Building report"}
+data: {"stage":"warning","progress":95,"message":"Partial data: some accounts unavailable"}
 data: {"stage":"done","progress":100,"report":{...}}
 ```
+
+Notes on stages:
+- `warning` is emitted when partial failures occur (e.g. one exchange API failed but analysis continues)
+- `finalizing` precedes `done` during report assembly
 
 On error:
 
@@ -99,11 +105,12 @@ When `stage: "done"` arrives, the payload includes `report` with this structure:
       "risk_score": 58,
       "risk_level": "medium",
       "indicators": {
-        "oi_change_24h": null,
-        "rsi_14": 63,
         "volume_ratio": 1.4,
         "funding_rate": 0.0001,
-        "volatility_ratio": 1.1
+        "volatility_ratio": 1.1,
+        "price_change_7d": -3.2,
+        "price_change_30d": 12.5,
+        "atr_pct": 0.042
       },
       "analysis": "Aggregated spot holding across 2 exchange(s).",
       "unrealized_pnl": 120.5
@@ -133,5 +140,3 @@ Notes:
 - Parse each `data:` line as a JSON event.
 - The final result is sent with `stage: "done"` and includes `report`.
 - If the stream ends before `done`, treat it as failure and surface the last event.
-*** End Patch}<> to=functions.apply_patch code
-++ ...
